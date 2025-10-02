@@ -72,11 +72,23 @@ class ApiClient {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
+        // Try to parse structured error; fallback to text
+        let errorMessage = `HTTP Error: ${response.status}`;
+        let errorCode: string | undefined = undefined;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorData.error || errorMessage;
+          errorCode = errorData.code;
+        } catch {
+          try {
+            const text = await response.text();
+            if (text) errorMessage = text;
+          } catch {}
+        }
         throw {
-          message: errorData.message || `HTTP Error: ${response.status}`,
+          message: errorMessage,
           status: response.status,
-          code: errorData.code,
+          code: errorCode,
         } as ApiError;
       }
 
@@ -106,9 +118,17 @@ class ApiClient {
 
   // Auth Methods
   async login(credentials: LoginRequest): Promise<LoginResponse> {
+    // Send JSON body to satisfy validators expecting dictionary/object
     return this.request<LoginResponse>(API_CONFIG.ENDPOINTS.LOGIN, {
       method: 'POST',
-      body: JSON.stringify(credentials),
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({
+        username: credentials.username,
+        password: credentials.password,
+      }),
     });
   }
 
